@@ -1,12 +1,12 @@
 -- lipperdam
 --  
--- latency compensating sequencer
+-- time-traveling latency compensation sequencer
 -- 1.0.0 @dewb
 --
 
 engine.name = 'PolyPerc'
 
-running = true
+running = false
 
 g = grid.connect()
 
@@ -16,6 +16,8 @@ offset_whole_steps = 0
 offset_frac_ms = 0
 offset_frac_beat = 0
 
+selected_output = 1
+selected_output_enc = 1
 
 function update_offsets()
   beat_length = clock.get_beat_sec()
@@ -144,7 +146,7 @@ function init()
   
   params:add{type = "number", id = "step_div", name = "step division", min = 1, max = 16, default = 4}
 
-  norns.enc.sens(1,8)
+  --norns.enc.sens(1,8)
 
   clock.run(step)
   
@@ -152,7 +154,7 @@ end
 
 function g.key(x, y, z)
   if z == 1 then
-    tracks[1].data[x] = (9-y)
+    tracks[selected_output].data[x] = (9-y)
   end
   gridredraw()
   redraw()
@@ -160,7 +162,7 @@ end
 
 function gridredraw()
   g:all(0)
-  t = 1
+  t = selected_output
   for y = 1, 8 do
     for x = 1, 16 do
       if tracks[t].data[x] > (8 - y) then 
@@ -183,21 +185,33 @@ end
 
 function enc(n, delta)
   if n==1 then
+    -- change mode
+  elseif n == 2 then
+    -- change track/output
+    selected_output_enc = util.clamp(selected_output_enc + delta/3, 1, 4)
+    selected_output = math.floor(selected_output_enc+0.5)
+  elseif n == 3 then
+    -- change mode main parameter
     latency = math.max(0, latency + delta/1000)
     update_offsets()
     update_output_positions()
-  elseif n == 2 then
-  elseif n == 3 then
+  end
+  if g then
+    gridredraw()
   end
   redraw()
 end
 
 function key(n,z)
-
-  if n == 3 and z == 1 then
+  if n == 2 and z == 1 then
+    if running then
+      stop()
+    else
+      start()
+    end
+  elseif n == 3 and z == 1 then
     reset()
   end
-
   redraw()
 end
 
@@ -205,18 +219,44 @@ function redraw()
   screen.clear()
   screen.line_width(1)
   screen.aa(0)
+  
+  screen.level(4)
+  screen.rect(0,0,31,10)
+  screen.fill()
+  screen.level(0)
+  screen.move(3,7)
+  screen.text("config")
+  
+  for t=1,4 do
+    if (t == selected_output) then
+      screen.level(4)
+      screen.rect(76+t*10,0,10,10)
+      screen.fill()
+      screen.level(0)
+      
+    else
+      screen.level(4)
+    end
+    screen.move(76+t*10+3,7)
+    screen.text(t)
+  end
+  
+  if running then
+    screen.level(6)
+    screen.move(120,16)
+    screen.text("▶")
+  end
 
   screen.level(4)
-  screen.move(0,10)
-  screen.text("latency comp: ".. math.floor(latency * 1000) .. "ms")
-  screen.move(0,20)
-  screen.text("step length: ".. math.floor(step_length * 1000) .. "ms")
   screen.move(0,30)
+  screen.text("latency compensation: ".. math.floor(latency * 1000) .. "ms")
+  screen.move(0,46)
+  screen.text("step length: ".. math.floor(step_length * 1000) .. "ms")
+  screen.move(0,54)
   screen.text("whole step offset: ".. offset_whole_steps)
-  screen.move(0,40)
-  screen.text("frac beat offset: ".. offset_frac_beat)
-  screen.move(0,50)
+  screen.move(0,62)
   screen.text("ms offset: ".. math.floor(offset_frac_ms * 1000) .. "ms")
+  --screen.text("frac beat offset: ".. offset_frac_beat)
 
   screen.update()
 end
