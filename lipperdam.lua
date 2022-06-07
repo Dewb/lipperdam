@@ -132,8 +132,8 @@ function step_output()
 
     for t = 1,4 do
       tracks[t].output_pos = (tracks[t].ui_pos + offset_whole_steps - 1) % tracks[t].length + 1
-      crow.output[t].volts = tracks[t].data
-      crow.output[t].execute()
+      crow.output[t].volts = tracks[t].data[tracks[t].output_pos]
+      --crow.output[t].execute()
     end
     engine.hz(tracks[1].output_pos == 1 and 880 or 220)
   end
@@ -147,6 +147,7 @@ function init()
   params:add{type = "number", id = "step_div", name = "step division", min = 1, max = 16, default = 4}
 
   --norns.enc.sens(1,8)
+  crow.init()
 
   clock.run(step)
   
