@@ -9,6 +9,7 @@ engine.name = 'PolyPerc'
 running = false
 
 g = grid.connect()
+midi_output = nil
 
 latency = 0.210
 step_length = 0
@@ -53,6 +54,13 @@ tracks = {
     length = 16,
     data = {5,7,0,0,0,0,0,0,0,0,0,0,0,0,0,0}
   }
+}
+
+midi_notes = {
+  { selected = 1, data = {50, 51, 52, 53, 54}},
+  { selected = 1, data = {60,61}},
+  { selected = 1, data = {70,71,72,73,74,75,76}},
+  { selected = 1, data = {80,81,82,83}}
 }
 
 function stop()
@@ -130,32 +138,104 @@ end
 function step_output()
   if running then
 
+    local scale_param_names = { "scale_1", "scale_2", "scale_3", "scale_4" }
+    local offset_param_names = { "offset_1", "offset_2", "offset_3", "offset_4" }
+
     for t = 1,4 do
+      scale = params:get(scale_param_names[t])/100.0
+      offset = params:get(offset_param_names[t])
       tracks[t].output_pos = (tracks[t].ui_pos + offset_whole_steps - 1) % tracks[t].length + 1
-      crow.output[t].volts = tracks[t].data[tracks[t].output_pos]
+      crow.output[t].volts = tracks[t].data[tracks[t].output_pos]/8.0 * scale + offset
       --crow.output[t].execute()
     end
+  
+    if midi_output ~= nil then
+      if tracks[1].output_pos == params:get("midi_fire_position") then
+        for m = 1, #midi_notes do
+          local n = midi_notes[m].data[midi_notes[m].selected]
+          if n ~= midi_notes[m].previous_value then
+            midi_output:note_off(midi_notes[m].previous_value, 120, 1)
+            midi_output:note_on(n, 120, 1)
+            midi_notes[m].previous_value = n
+          end
+        end
+      end
+    end
+
     engine.hz(tracks[1].output_pos == 1 and 880 or 220)
+  
   end
 end
 
 function init()
 
   params:add_separator("LIPPERDAM")
-  params:default()
   
-  params:add{type = "number", id = "step_div", name = "step division", min = 1, max = 16, default = 4}
+  params:add{type = "number", id = "step_div", name = "step division", min = 1, max = 16, default = 2}
+  params:add{type = "number", id = "midi_fire_position", name = "midi event fire position", min = 1, max = 16, default = 1}
+  params:add{type = "number", id = "midi_output_device", name = "midi output device", min = 1, max = 4, default = 2, 
+    action = function (x)
+      midi_output = midi.connect(x)
+    end
+  }
+
+  local volts_spec = controlspec.def{
+    min=0.00,
+    max=1.0,
+    warp='lin',
+    step=0.001,
+    default=0.0,
+    quantum=0.001,
+    wrap=false,
+    units='V'
+  } 
+
+  local scale_spec = controlspec.def{
+    min=0.00,
+    max=100.0,
+    warp='lin',
+    step=0.1,
+    default=100.0,
+    quantum=0.001,
+    wrap=false,
+    units='%'
+  } 
+
+  params:add_control("scale_1", "scale 1", scale_spec)
+  params:add_control("scale_2", "scale 2", scale_spec)
+  params:add_control("scale_3", "scale 3", scale_spec)
+  params:add_control("scale_4", "scale 4", scale_spec)
+
+  params:add_control("offset_1", "offset 1", volts_spec)
+  params:add_control("offset_2", "offset 2", volts_spec)
+  params:add_control("offset_3", "offset 3", volts_spec)
+  params:add_control("offset_4", "offset 4", volts_spec)
 
   --norns.enc.sens(1,8)
   crow.init()
+
+  params:default()
+
+
+  midi_output = midi.connect(params:get("midi_output_device"))
 
   clock.run(step)
   
 end
 
 function g.key(x, y, z)
-  if z == 1 then
-    tracks[selected_output].data[x] = (9-y)
+  if z == 1 and selected_output > 0 then
+    local value = 9-y
+    if tracks[selected_output].data[x] == value then
+      tracks[selected_output].data[x] = 0
+    else 
+      tracks[selected_output].data[x] = value
+    end
+  elseif z == 1 and selected_output == 0 then
+    local value = x
+    if y <= #midi_notes and x <= #(midi_notes[y].data) then
+      midi_notes[y].selected = x
+    end
   end
   gridredraw()
   redraw()
@@ -164,20 +244,37 @@ end
 function gridredraw()
   g:all(0)
   t = selected_output
-  for y = 1, 8 do
-    for x = 1, 16 do
-      if tracks[t].data[x] > (8 - y) then 
-        if tracks[t].ui_pos == x then
-          g:led(x, y, 15)
+  if t > 0 then
+    for y = 1, 8 do
+      for x = 1, 16 do
+        if tracks[t].data[x] > (8 - y) then 
+          if tracks[t].ui_pos == x then
+            g:led(x, y, 15)
+          else
+            g:led(x, y, 5) 
+          end
         else
-          g:led(x, y, 5) 
+          if tracks[t].ui_pos == x then
+            g:led(x, y, 10)
+          elseif tracks[t].output_pos == x then
+            g:led(x, y, 2)
+          end
         end
-      else
-        if tracks[t].ui_pos == x then
+      end
+    end
+  elseif t == 0 then
+    for y = 1, 8 do
+      for x = 1, 16 do
+        if tracks[1].ui_pos == x then
           g:led(x, y, 10)
-        elseif tracks[t].output_pos == x then
+        elseif tracks[1].output_pos == x then
           g:led(x, y, 2)
         end
+      end
+    end
+    for y = 1,#midi_notes do
+      for x = 1, #(midi_notes[y].data) do
+        g:led(x, y, x == midi_notes[y].selected and 15 or 6)
       end
     end
   end
@@ -189,7 +286,7 @@ function enc(n, delta)
     -- change mode
   elseif n == 2 then
     -- change track/output
-    selected_output_enc = util.clamp(selected_output_enc + delta/3, 1, 4)
+    selected_output_enc = util.clamp(selected_output_enc + delta/3, 0, 4)
     selected_output = math.floor(selected_output_enc+0.5)
   elseif n == 3 then
     -- change mode main parameter
@@ -228,8 +325,8 @@ function redraw()
   screen.move(3,7)
   screen.text("config")
   
-  for t=1,4 do
-    if (t == selected_output) then
+  for t=0,4 do
+    if t == selected_output then
       screen.level(4)
       screen.rect(76+t*10,0,10,10)
       screen.fill()
@@ -238,8 +335,14 @@ function redraw()
     else
       screen.level(4)
     end
-    screen.move(76+t*10+3,7)
-    screen.text(t)
+
+    if t == 0 then
+      screen.move(78,7)
+      screen.text("M")
+    else
+      screen.move(76+t*10+3,7)
+      screen.text(t)
+    end
   end
   
   if running then
