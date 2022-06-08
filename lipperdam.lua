@@ -135,20 +135,35 @@ function step_ui()
 
 end
 
+function update_crow_slew(slew_ms)
+  for t = 1,4 do
+    crow.output[t].slew = slew_ms * 0.01
+  end
+end
+
+
+function update_crow_output(t)
+  --print("updating crow output" .. t)
+  local scale_param_names = { "scale_1", "scale_2", "scale_3", "scale_4" }
+  local offset_param_names = { "offset_1", "offset_2", "offset_3", "offset_4" }
+
+  scale = params:get(scale_param_names[t])/100.0
+  offset = params:get(offset_param_names[t])
+  value = 0
+  if tracks[t].output_pos > 0 then
+    value = tracks[t].data[tracks[t].output_pos]/8.0
+  end
+  crow.output[t].volts = value * scale + offset
+end
+
 function step_output()
   if running then
 
-    local scale_param_names = { "scale_1", "scale_2", "scale_3", "scale_4" }
-    local offset_param_names = { "offset_1", "offset_2", "offset_3", "offset_4" }
-
     for t = 1,4 do
-      scale = params:get(scale_param_names[t])/100.0
-      offset = params:get(offset_param_names[t])
       tracks[t].output_pos = (tracks[t].ui_pos + offset_whole_steps - 1) % tracks[t].length + 1
-      crow.output[t].volts = tracks[t].data[tracks[t].output_pos]/8.0 * scale + offset
-      --crow.output[t].execute()
+      update_crow_output(t)
     end
-  
+
     if midi_output ~= nil then
       if tracks[1].output_pos == params:get("midi_fire_position") then
         for m = 1, #midi_notes do
@@ -162,6 +177,7 @@ function step_output()
       end
     end
 
+    -- metronome sound for testing
     engine.hz(tracks[1].output_pos == 1 and 880 or 220)
   
   end
@@ -201,21 +217,38 @@ function init()
     units='%'
   } 
 
+  local slew_spec = controlspec.def{
+    min=0.00,
+    max=100.0,
+    warp='lin',
+    step=0.1,
+    default=0.0,
+    quantum=0.001,
+    wrap=false,
+    units='ms'
+  }
+
   params:add_control("scale_1", "scale 1", scale_spec)
+  params:set_action("scale_1", function (v) update_crow_output(1) end)
   params:add_control("scale_2", "scale 2", scale_spec)
+  params:set_action("scale_2", function (v) update_crow_output(2) end)
   params:add_control("scale_3", "scale 3", scale_spec)
   params:add_control("scale_4", "scale 4", scale_spec)
 
   params:add_control("offset_1", "offset 1", volts_spec)
+  params:set_action("offset_1", function (v) update_crow_output(1) end)
   params:add_control("offset_2", "offset 2", volts_spec)
+  params:set_action("offset_2", function (v) update_crow_output(2) end)
   params:add_control("offset_3", "offset 3", volts_spec)
   params:add_control("offset_4", "offset 4", volts_spec)
+
+  params:add_control("crow_slew", "crow slew", slew_spec)
+  params:set_action("crow_slew", update_crow_slew)
 
   --norns.enc.sens(1,8)
   crow.init()
 
   params:default()
-
 
   midi_output = midi.connect(params:get("midi_output_device"))
 
