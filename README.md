@@ -29,17 +29,23 @@ nice to have:
 
 ## todo
 
-- [ ] scale/offset crow output
+- [X] adjustable global sequencer latency
+- [X] four separate function tracks
+- [X] "clip launch" style midi note page (prototype)
+- [X] scale/offset crow output
+- [X] slew
 - [ ] crow max output voltage range
-- [ ] ramp mode, lin/exp curves, slew
+- [ ] ramp mode, lin/exp curves
 - [ ] params for crow output assignments
 - [ ] pattern bank switching on bar quantum
 - [ ] more params
 - [ ] save pattern banks to pset
 - [ ] different quantum per track
 - [ ] different latency per track
-- [ ] midi output
+- [ ] midi cc output from function tracks
+- [ ] osc output from function tracks
+- [ ] complete clip launch page
 - [ ] more ui
 - [ ] switch between step/level mode & breakpoint mode
 - [ ] params for engine output
-
+- [ ] record knob or midi input gestures to function track
